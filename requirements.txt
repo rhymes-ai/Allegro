@@ -12,3 +12,4 @@ imageio
 imageio-ffmpeg
 ftfy
 bs4
+huggingface-hub==0.25.2
