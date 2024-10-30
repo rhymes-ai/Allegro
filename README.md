@@ -7,6 +7,14 @@
 </p> 
 Allegro is a powerful text-to-video model that generates high-quality videos up to 6 seconds at 15 FPS and 720p resolution from simple text input.
 
+## News 🔥
+ - [24/10/30] 🚀 We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). With VideoSys framework, the inference time can be further reduced to 3 mins (8xH100) and 2 mins (8xH100+PAB). We also opened a PR to the original [VideoSys repo](https://github.com/NUS-HPC-AI-Lab/VideoSys).
+
+ - [24/10/29] 🎉Congratulations that Allegro is merged into diffusers! Currently Allegro is supported in `0.32.0-dev0.` It will be integrated in the next release version. So for now, please use `pip install git+https://github.com/huggingface/diffusers.git@9214f4a3782a74e510eff7e09b59457fe8b63511` to install diffuser dev version. See [huggingface](https://huggingface.co/rhymes-ai/Allegro) for more details.
+
+
+
+
 ## Model Info
 <table>
   <tr>
