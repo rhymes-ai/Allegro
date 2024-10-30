@@ -63,6 +63,10 @@ Allegro is a powerful text-to-video model that generates high-quality videos up 
     <th>Single GPU Memory Usage</th>
     <td>9.3G BF16 (with cpu_offload)</td>
   </tr>
+    <tr>
+    <th>Inference time</th>
+    <td>20 mins (single H100) / 3 mins (8xH100)</td>
+  </tr>
 </table>
 
 ## Quick Start
