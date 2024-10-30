@@ -70,7 +70,7 @@ Allegro is a powerful text-to-video model that generates high-quality videos up 
 </table>
 
 ## Quick Start
-
+### Single Inference
 1. Download the [Allegro GitHub code](https://github.com/rhymes-ai/Allegro).
    
 2. Install the necessary requirements.
@@ -104,14 +104,17 @@ Allegro is a powerful text-to-video model that generates high-quality videos up 
   
     For better visual quality, please use imageio to save the video.
 
+### Multi-Card Inference
+We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). 
+
 ## Limitation
 - The model cannot render celebrities, legible text, specific locations, streets or buildings.
 
 ## Future Plan
-- Multiple GPU inference and further speed up (PAB)
-- Text & Image-To-Video (TI2V) video generation
-- Motion-controlled video generation
-- Visual quality enhancement
+- [x] Multiple GPU inference and further speed up (PAB)
+- [ ] Text & Image-To-Video (TI2V) video generation
+- [ ] Motion-controlled video generation
+- [ ] Visual quality enhancement
 
 ## Support
 If you encounter any problems or have any suggestions, feel free to [open an issue](https://github.com/rhymes-ai/Allegro/issues/new) or send an email to huanyang@rhymes.ai. 
