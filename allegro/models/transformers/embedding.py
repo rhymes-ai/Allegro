@@ -125,4 +125,74 @@ class PatchEmbed2D(nn.Module):
         video_latent = latent
 
         return video_latent
+    
+class PatchEmbed2DTI2V(nn.Module):
+    """2D Image to Patch Embedding but with 3D position embedding"""
+
+    def __init__(
+        self,
+        num_frames=1, 
+        height=224,
+        width=224,
+        patch_size_t=1,
+        patch_size=16,
+        in_channels=3,
+        embed_dim=768,
+        layer_norm=False,
+        flatten=True,
+        bias=True,
+        interpolation_scale=(1, 1),
+        interpolation_scale_t=1,
+        use_abs_pos=True, 
+    ):
+        super().__init__()
+        self.use_abs_pos = use_abs_pos
+        self.flatten = flatten
+        self.layer_norm = layer_norm
+
+        self.proj = nn.Conv2d(
+            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=(patch_size, patch_size), bias=bias
+        )
+        if layer_norm:
+            self.norm = nn.LayerNorm(embed_dim, elementwise_affine=False, eps=1e-6)
+        else:
+            self.norm = None
+
+        self.patch_size_t = patch_size_t
+        self.patch_size = patch_size
+
+        # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L161
+
+        self.height, self.width = height // patch_size, width // patch_size
+        self.base_size = (height // patch_size, width // patch_size)
+        self.interpolation_scale = (interpolation_scale[0], interpolation_scale[1])
+       
+        self.num_frames = num_frames // patch_size_t
+        self.base_size_t = num_frames // patch_size_t
+        self.interpolation_scale_t = interpolation_scale_t
+
+
+    def forward(self, latent, num_frames):
+        b, _, _, _, _ = latent.shape
+        video_latent, image_latent = None, None
+        height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
+        latent = rearrange(latent, 'b c t h w -> (b t) c h w')
+        latent = self.proj(latent)
+
+        if self.flatten:
+            latent = latent.flatten(2).transpose(1, 2)  # BT C H W -> BT N C
+        if self.layer_norm:
+            latent = self.norm(latent)
+
+        latent = rearrange(latent, '(b t) n c -> b t n c', b=b)
+        video_latent, image_latent = latent[:, :num_frames], latent[:, num_frames:]
+
+        video_latent = rearrange(video_latent, 'b t n c -> b (t n) c') if video_latent is not None and video_latent.numel() > 0 else None
+        image_latent = rearrange(image_latent, 'b t n c -> (b t) n c') if image_latent is not None and image_latent.numel() > 0 else None
+
+        if num_frames == 1 and image_latent is None:
+            image_latent = video_latent
+            video_latent = None
+
+        return video_latent, image_latent
 
