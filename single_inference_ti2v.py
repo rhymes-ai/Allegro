@@ -134,8 +134,6 @@ low quality, normal quality, jpeg artifacts, signature, watermark, username, blu
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--user_prompt", type=str, default='Two skateboarders ride in a concrete skatepark. One, dressed in a red shirt and shorts, is in motion on the left. The other, wearing a light-colored sweatshirt and shorts, balances on the right. They glide along curved ramps, maneuvering skillfully within the open-air setting.')
-    # parser.add_argument('--images', nargs='+', default=['/cpfs/data/user/zhouyuan/eval/ti2v_test_202409/test_005.jpg',])
     parser.add_argument("--user_prompt", type=str, default='')
     parser.add_argument('--first_frame', type=str, default='', help='A single image file as the first frame.')
     parser.add_argument('--last_frame', type=str, default='', help='A single image file as the last frame.')
