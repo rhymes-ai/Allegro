@@ -29,7 +29,7 @@ def preprocess_images(first_frame, last_frame, height, width, device, dtype):
         print("first_frame:", first_frame)
         images.append(first_frame)
     else:
-        print("ERROR: First frame must be provided in the Allegro-TI2V!")
+        print("ERROR: First frame must be provided in Allegro-TI2V!")
         raise NotImplementedError
     if last_frame is not None and len(last_frame.strip()) != 0: 
         print("last_frame:", last_frame)
@@ -57,13 +57,24 @@ def preprocess_images(first_frame, last_frame, height, width, device, dtype):
 
     return dict(conditional_images=conditional_images, conditional_images_indices=conditional_images_indices)
 
+def prompt_formatting(user_prompt, positive_prompt,):
+    if user_prompt is None:
+        print("ERROR: User prompt must be provided in Allegro-TI2V!")
+        raise NotImplementedError
+    user_prompt = user_prompt.lower().strip()
+    if user_prompt == '' or len(user_prompt) == 0:
+        print("ERROR: User prompt must be provided in Allegro-TI2V!")
+        raise NotImplementedError
+    user_prompt = positive_prompt.format(user_prompt)
+    
+    return user_prompt
+
 
 def single_inference(args):
     dtype=torch.bfloat16
 
     # vae have better formance in float32
     vae = AllegroAutoencoderKL3D.from_pretrained(args.vae, torch_dtype=torch.float32).cuda()
-
     vae.eval()
 
     text_encoder = T5EncoderModel.from_pretrained(
@@ -82,7 +93,7 @@ def single_inference(args):
         args.dit,
         torch_dtype=dtype
     ).cuda()
-    transformer.eval()
+    transformer.eval()   
 
     allegro_ti2v_pipeline = AllegroTI2VPipeline(
         vae=vae,
@@ -104,8 +115,7 @@ sharp focus, high budget, cinemascope, moody, epic, gorgeous
 nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, 
 low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry.
 """
-
-    user_prompt = positive_prompt.format(args.user_prompt.lower().strip())
+    user_prompt = prompt_formatting(args.user_prompt, positive_prompt)
     pre_results = preprocess_images(args.first_frame, args.last_frame, height=720, width=1280, device=torch.cuda.current_device(), dtype=torch.bfloat16)
     cond_imgs = pre_results['conditional_images']
     cond_imgs_indices = pre_results['conditional_images_indices']
