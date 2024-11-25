@@ -79,7 +79,47 @@
 </table>
 
 ## Quick Start
-### Single Inference
+### Allegro
+#### Single Inference
+1. Download the [Allegro GitHub code](https://github.com/rhymes-ai/Allegro).
+   
+2. Install the necessary requirements.
+   
+   - Ensure Python >= 3.10, PyTorch >= 2.4, CUDA >= 12.4. For details, see [requirements.txt](https://github.com/rhymes-ai/Allegro/blob/main/requirements.txt).  
+    
+   - It is recommended to use Anaconda to create a new environment (Python >= 3.10) to run the following example.  
+   
+3. Download the [Allegro model weights](https://huggingface.co/rhymes-ai/Allegro).
+   
+4. Run inference.
+   
+    ```python
+    python single_inference.py \
+    --user_prompt 'A seaside harbor with bright sunlight and sparkling seawater, with many boats in the water. From an aerial view, the boats vary in size and color, some moving and some stationary. Fishing boats in the water suggest that this location might be a popular spot for docking fishing boats.' \
+    --save_path ./output_videos/test_video.mp4 \
+    --vae your/path/to/vae \
+    --dit your/path/to/transformer \
+    --text_encoder your/path/to/text_encoder \
+    --tokenizer your/path/to/tokenizer \
+    --guidance_scale 7.5 \
+    --num_sampling_steps 100 \
+    --seed 42
+    ```
+
+    Use `--enable_cpu_offload` to offload the model into CPU for less GPU memory cost (about 9.3G, compared to 27.5G if CPU offload is not enabled), but the inference time will increase significantly.
+
+
+5. (Optional) Interpolate the video to 30 FPS.
+
+    It is recommended to use [EMA-VFI](https://github.com/MCG-NJU/EMA-VFI) to interpolate the video from 15 FPS to 30 FPS.
+  
+    For better visual quality, please use imageio to save the video.
+   
+#### Multi-Card Inference
+We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). 
+
+### Allegro TI2V
+#### Single Inference
 1. Download the [Allegro GitHub code](https://github.com/rhymes-ai/Allegro).
    
 2. Install the necessary requirements.
@@ -121,7 +161,7 @@
   
     For better visual quality, please use imageio to save the video.
 
-### Multi-Card Inference
+#### Multi-Card Inference
 We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). 
 
 ## Limitation
