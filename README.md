@@ -157,7 +157,7 @@
   
     For better visual quality, please use imageio to save the video.
 
-#### Multi-Card Inference
+### Multi-Card Inference
 For both Allegro & Allegro TI2V: We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). 
 
 ## Limitation
