@@ -154,7 +154,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_path", type=str, default="./output_videos/test_video.mp4")
     parser.add_argument("--guidance_scale", type=float, default=8)
     parser.add_argument("--num_sampling_steps", type=int, default=100)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=1427329220)
     parser.add_argument("--enable_cpu_offload", action='store_true')
 
     args = parser.parse_args()
