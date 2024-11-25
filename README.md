@@ -79,8 +79,8 @@
 </table>
 
 ## Quick Start
-### Allegro
-#### Single Inference
+### Single Inference
+#### Allegro
 1. Download the [Allegro GitHub code](https://github.com/rhymes-ai/Allegro).
    
 2. Install the necessary requirements.
@@ -115,11 +115,7 @@
   
     For better visual quality, please use imageio to save the video.
    
-#### Multi-Card Inference
-We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). 
-
-### Allegro TI2V
-#### Single Inference
+#### Allegro TI2V
 1. Download the [Allegro GitHub code](https://github.com/rhymes-ai/Allegro).
    
 2. Install the necessary requirements.
@@ -162,7 +158,7 @@ We release multi-card inference code and PAB in [Allegro-VideoSys](https://githu
     For better visual quality, please use imageio to save the video.
 
 #### Multi-Card Inference
-We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). 
+For both Allegro & Allegro TI2V: We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). 
 
 ## Limitation
 - The model cannot render celebrities, legible text, specific locations, streets or buildings.
