@@ -106,28 +106,14 @@
     ```
   
     The output video resolution is fixed at 720 × 1280. Input images with different resolutions will be automatically cropped and resized to fit.
-   <table>
-   <tr>
-    <td>Argument</td>
-    <td>Description</td>
-   </tr>
-   <tr>
-    <td>--user_prompt</td>
-    <td>[Required] Text input for image-to-video generation.</td>
-   </tr>
-   <tr>
-    <td>--first_frame</td>
-    <td>[Required] First-frame image input for image-to-video generation.</td>
-   </tr>
-   <tr>
-    <td>--last_frame</td>
-    <td>[Optional] If provided, the model will generate intermediate video content based on the specified first and last frame images.</td>
-   </tr>
-   <tr>
-    <td>--enable_cpu_offload</td>
-    <td>[Optional] Offload the model into CPU for less GPU memory cost (about 9.3G, compared to 27.5G if CPU offload is not enabled), but the inference time will increase significantly.</td>
-   </tr>
-   </table>
+
+| Argument         | Description                                                                                                                              |
+|-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--user_prompt`       | [Required] Text input for image-to-video generation.                                                                                          |
+| `--first_frame`       | [Required] First-frame image input for image-to-video generation.                                                                             |
+| `--last_frame`        | [Optional] If provided, the model will generate intermediate video content based on the specified first and last frame images.                |
+| <span style="background-color: #f6f8fa;">`--enable_cpu_offload`</span> | <span style="background-color: #f6f8fa;">[Optional] Offload the model into CPU for less GPU memory cost (about 9.3G, compared to 27.5G if CPU offload is not enabled), but the inference time will increase significantly.</span> |
+
 
 5. (Optional) Interpolate the video to 30 FPS.
 
