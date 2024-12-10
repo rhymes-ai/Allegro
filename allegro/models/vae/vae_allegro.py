@@ -362,7 +362,7 @@ class AllegroAutoencoderKL3D(ModelMixin, ConfigMixin):
             else sample_size
         )
         self.tile_overlap = tile_overlap
-        self.vae_scale_factor=[4, 8, 8]
+        self.vae_scale_factor = [4, 8, 8]
         self.scale_factor = scale_factor
         self.sample_size = sample_size
         self.chunk_len = chunk_len
