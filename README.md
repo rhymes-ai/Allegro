@@ -10,6 +10,8 @@
 
 ## News 🔥
 
+ - [2024/12/10] 🚀 We release the training code for further training / fine-tuning!
+
  - [2024/11/25] 🚀 [Allegro-TI2V](https://huggingface.co/rhymes-ai/Allegro-TI2V) is open sourced! 
 
  - [2024/10/30] 🚀 We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). With VideoSys framework, the inference time can be further reduced to 3 mins (8xH100) and 2 mins (8xH100+PAB). We also opened a PR to the original [VideoSys repo](https://github.com/NUS-HPC-AI-Lab/VideoSys).
@@ -159,6 +161,77 @@
 
 ### Multi-Card Inference
 For both Allegro & Allegro TI2V: We release multi-card inference code and PAB in [Allegro-VideoSys](https://github.com/nightsnack/Allegro-VideoSys). 
+
+### Training / Fine-tuning
+
+1. Download the [Allegro GitHub code](https://github.com/rhymes-ai/Allegro), [Allegro model weights](https://huggingface.co/rhymes-ai/Allegro) and prepare the environment in [requirements.txt](https://github.com/rhymes-ai/Allegro/blob/main/requirements.txt).
+   
+2. Our training code loads the dataset from `.parquet` files. We recommend first constructing a `.jsonl` file to store all data cases in a list. Each case should be stored as a dict, like this:
+
+    ```json
+    [
+        {"path": "foo/bar.mp4", "num_frames": 123, "height": 1080, "width": 1920, "cap": "This is a fake caption."}
+        ...
+    ]
+    ```
+    
+    After that, run [dataset_utils.py](https://github.com/rhymes-ai/Allegro/blob/main/allegro/utils/dataset_utils.py) to convert `.jsonl` into `.parquet`.
+
+    > The absolute path to each video is constructed by joining `args.data_dir` in [train.py](https://github.com/rhymes-ai/Allegro/blob/main/train.py) with the `path` value from the dataset. Therefore, you may define `path` as a relative path within your dataset and set `args.data_dir` to the root dir when running training.
+
+3. Run Training / Fine-tuning:
+
+    ```bash
+    export OMP_NUM_THREADS=1
+    export MKL_NUM_THREADS=1
+
+    export WANDB_API_KEY=YOUR_WANDB_KEY
+
+    accelerate launch \
+        --num_machines 1 \
+        --num_processes 8 \
+        --machine_rank 0 \
+        --config_file config/accelerate_config.yaml \
+        train.py \
+        --project_name Allegro_Finetune_88x720p \
+        --dit_config /huggingface/rhymes-ai/Allegro/transformer/config.json \
+        --dit /huggingface/rhymes-ai/Allegro/transformer/ \
+        --tokenizer /huggingface/rhymes-ai/Allegro/tokenizer \
+        --text_encoder /huggingface/rhymes-ai/Allegro/text_encoder \
+        --vae /huggingface/rhymes-ai/Allegro/vae \
+        --vae_load_mode encoder_only \
+        --enable_ae_compile \
+        --dataset t2v \
+        --data_dir /data_root/ \
+        --meta_file data.parquet \
+        --sample_rate 2 \
+        --num_frames 88 \
+        --max_height 720 \
+        --max_width 1280 \
+        --hw_thr 1.0 \
+        --hw_aspect_thr 1.5 \
+        --dataloader_num_workers 10 \
+        --gradient_checkpointing \
+        --train_batch_size 1 \
+        --gradient_accumulation_steps 1 \
+        --max_train_steps 1000000 \
+        --learning_rate 1e-4 \
+        --lr_scheduler constant \
+        --lr_warmup_steps 0 \
+        --mixed_precision bf16 \
+        --report_to wandb \
+        --allow_tf32 \
+        --enable_stable_fp32 \
+        --model_max_length 512 \
+        --cfg 0.1 \
+        --checkpointing_steps 100 \
+        --resume_from_checkpoint latest \
+        --output_dir ./output/Allegro_Finetune_88x720p
+    ```
+
+4. (Optional) To customize the model training arguments, you may create a `.json` file following [config.json](https://huggingface.co/rhymes-ai/Allegro/blob/main/transformer/config.json). Feel free to use our training code to train a video diffusion model from scratch.
+
+
 
 ## Limitation
 - The model cannot render celebrities, legible text, specific locations, streets or buildings.

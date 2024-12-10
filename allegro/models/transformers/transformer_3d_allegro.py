@@ -17,7 +17,7 @@ from diffusers.configuration_utils import ConfigMixin, register_to_config
 
 from diffusers.models.modeling_utils import ModelMixin
 
-from diffusers.utils import BaseOutput, is_xformers_available
+from diffusers.utils import BaseOutput, is_xformers_available, is_torch_version
 from einops import rearrange
 from torch import nn
 from diffusers.models.embeddings import PixArtAlphaTextProjection
@@ -222,9 +222,8 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
         
         self.gradient_checkpointing = False
 
-    def _set_gradient_checkpointing(self, module, value=False):
+    def _set_gradient_checkpointing(self, value):
         self.gradient_checkpointing = value
-
 
     def forward(
         self,
@@ -295,7 +294,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             #   (1 = keep,      0 = discard)
             # convert mask into a bias that can be added to attention scores:
             #   (keep = +0,     discard = -10000.0)
-            # b, frame+use_image_num, h, w -> a video with images
+            # b, frame, h, w -> a video with images
             # b, 1, h, w -> only images
             attention_mask = attention_mask.to(self.dtype)
             attention_mask_vid = attention_mask[:, :frame]  # b, frame, h, w
@@ -310,7 +309,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
 
         # convert encoder_attention_mask to a bias the same way we do for attention_mask
         if encoder_attention_mask is not None and encoder_attention_mask.ndim == 3:  
-            # b, 1+use_image_num, l -> a video with images
+            # b, 1, l -> a video with images
             # b, 1, l -> only images
             encoder_attention_mask = (1 - encoder_attention_mask.to(self.dtype)) * -10000.0
             encoder_attention_mask_vid = rearrange(encoder_attention_mask, 'b 1 l -> (b 1) 1 l') if encoder_attention_mask.numel() > 0 else None
@@ -325,20 +324,45 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
             hidden_states, encoder_hidden_states, timestep, added_cond_kwargs, batch_size,
         )
 
-
+        # 2. Blocks
         for _, block in enumerate(self.transformer_blocks):
-            hidden_states = block(
-                hidden_states,
-                attention_mask_vid,
-                encoder_hidden_states_vid,
-                encoder_attention_mask_vid,
-                timestep_vid,
-                cross_attention_kwargs,
-                class_labels,
-                frame=frame, 
-                height=height, 
-                width=width, 
-            )
+            if self.training and self.gradient_checkpointing:
+                def create_custom_forward(module, return_dict=None):
+                    def custom_forward(*inputs):
+                        if return_dict is not None:
+                            return module(*inputs, return_dict=return_dict)
+                        else:
+                            return module(*inputs)
+                    return custom_forward
+                
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    hidden_states,
+                    attention_mask_vid,
+                    encoder_hidden_states_vid,
+                    encoder_attention_mask_vid,
+                    timestep_vid,
+                    cross_attention_kwargs,
+                    class_labels,
+                    frame, 
+                    height, 
+                    width, 
+                    **ckpt_kwargs,
+                )
+            else:
+                hidden_states = block(
+                    hidden_states,
+                    attention_mask_vid,
+                    encoder_hidden_states_vid,
+                    encoder_attention_mask_vid,
+                    timestep_vid,
+                    cross_attention_kwargs,
+                    class_labels,
+                    frame=frame, 
+                    height=height, 
+                    width=width, 
+                )
 
          # 3. Output
         output = None 
@@ -378,7 +402,7 @@ class AllegroTransformer3DModel(ModelMixin, ConfigMixin):
                 embedded_timestep_vid = embedded_timestep
 
             if self.caption_projection is not None:
-                encoder_hidden_states = self.caption_projection(encoder_hidden_states)  # b, 1+use_image_num, l, d or b, 1, l, d
+                encoder_hidden_states = self.caption_projection(encoder_hidden_states)  # b, 1, l, d or b, 1, l, d
                 encoder_hidden_states_vid = rearrange(encoder_hidden_states[:, :1], 'b 1 l d -> (b 1) l d')
 
             return hidden_states_vid, encoder_hidden_states_vid, timestep_vid, embedded_timestep_vid
