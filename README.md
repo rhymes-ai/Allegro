@@ -239,6 +239,7 @@ For both Allegro & Allegro TI2V: We release multi-card inference code and PAB in
 ## Future Plan
 - [x] Multiple GPU inference and further speed up (PAB)
 - [x] Text & Image-To-Video (TI2V) video generation
+- [x] Training for T2V&TI2V
 - [ ] Motion-controlled video generation
 - [ ] Visual quality enhancement
 
