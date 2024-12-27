@@ -10,6 +10,8 @@
 
 ## News 🔥
 
+ - [2024/12/26] 🚀 We release the low-resolution (<a href="https://huggingface.co/rhymes-ai/Allegro-T2V-40x360P">40x360P</a>) and fewer-frame (<a href="https://huggingface.co/rhymes-ai/Allegro-T2V-40x720P">40x720P</a>) models of Allegro for research purpose!
+  
  - [2024/12/10] 🚀 We release the training code for further training / fine-tuning!
 
  - [2024/11/25] 🚀 [Allegro-TI2V](https://huggingface.co/rhymes-ai/Allegro-TI2V) is open sourced! 
@@ -27,18 +29,18 @@
 <table>
   <tr>
     <th>Model</th>
-    <td>Allegro-TI2V</td>
     <td>Allegro</td>
+    <td>Allegro-TI2V</td>
   </tr>
   <tr>
     <th>Description</th>
-    <td>Text-Image-to-Video Generation Model</td>
     <td>Text-to-Video Generation Model</td>
+    <td>Text-Image-to-Video Generation Model</td>
   </tr>
  <tr>
     <th>Download</th>
-    <td><a href="https://huggingface.co/rhymes-ai/Allegro-TI2V">Hugging Face</a></td>
-    <td><a href="https://huggingface.co/rhymes-ai/Allegro">Hugging Face</a></td>
+    <td><a href="https://huggingface.co/rhymes-ai/Allegro">Hugging Face (88x720P)</a><br><a href="https://huggingface.co/rhymes-ai/Allegro-T2V-40x720P">Hugging Face (40x720P)</a><br><a href="https://huggingface.co/rhymes-ai/Allegro-T2V-40x360P">Hugging Face (40x360P)</a></td>
+    <td><a href="https://huggingface.co/rhymes-ai/Allegro-TI2V">Hugging Face (88x720P)</a></td>
 </tr>
   <tr>
     <th rowspan="2">Parameter</th>
