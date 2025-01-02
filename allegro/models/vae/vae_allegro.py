@@ -372,7 +372,7 @@ class AllegroAutoencoderKL3D(ModelMixin, ConfigMixin):
         self.latent_t_over = self.t_over//4 
         self.kernel = (self.chunk_len, self.sample_size, self.sample_size) #(24, 256, 256)
         self.stride = (self.chunk_len - self.t_over, self.sample_size-self.tile_overlap[0], self.sample_size-self.tile_overlap[1])  # (16, 112, 192)
-
+        self.latent_channels = latent_channels
 
     def encode(self, input_imgs: torch.Tensor, return_dict: bool = True, local_batch_size=1) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
         KERNEL = self.kernel

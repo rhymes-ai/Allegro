@@ -166,6 +166,8 @@ For both Allegro & Allegro TI2V: We release multi-card inference code and PAB in
 
 ### Training / Fine-tuning
 
+#### Allegro T2V
+
 1. Download the [Allegro GitHub code](https://github.com/rhymes-ai/Allegro), [Allegro model weights](https://huggingface.co/rhymes-ai/Allegro) and prepare the environment in [requirements.txt](https://github.com/rhymes-ai/Allegro/blob/main/requirements.txt).
    
 2. Our training code loads the dataset from `.parquet` files. We recommend first constructing a `.jsonl` file to store all data cases in a list. Each case should be stored as a dict, like this:
@@ -233,7 +235,83 @@ For both Allegro & Allegro TI2V: We release multi-card inference code and PAB in
 
 4. (Optional) To customize the model training arguments, you may create a `.json` file following [config.json](https://huggingface.co/rhymes-ai/Allegro/blob/main/transformer/config.json). Feel free to use our training code to train a video diffusion model from scratch.
 
+#### Allegro TI2V
 
+For Allegro TI2V, currently we only support the video size on 88x720x1280.
+
+1. Download the [Allegro GitHub code](https://github.com/rhymes-ai/Allegro), [Allegro-TI2V model weights](https://huggingface.co/rhymes-ai/Allegro-TI2V) and prepare the environment in [requirements.txt](https://github.com/rhymes-ai/Allegro/blob/main/requirements.txt).
+   
+2. Our training code loads the dataset from `.parquet` files. We recommend first constructing a `.jsonl` file to store all data cases in a list. Each case should be stored as a dict, like this:
+
+    ```json
+    [
+        {"path": "foo/bar.mp4", "num_frames": 123, "height": 1080, "width": 1920, "cap": "This is a fake caption."}
+        ...
+    ]
+    ```
+    
+    After that, run [dataset_utils.py](https://github.com/rhymes-ai/Allegro/blob/main/allegro/utils/dataset_utils.py) to convert `.jsonl` into `.parquet`.
+
+    > The absolute path to each video is constructed by joining `args.data_dir` in [train_ti2v.py](https://github.com/rhymes-ai/Allegro/blob/main/train_ti2v.py) with the `path` value from the dataset. Therefore, you may define `path` as a relative path within your dataset and set `args.data_dir` to the root dir when running training.
+
+3. Run Training / Fine-tuning:
+
+    In Allgro-TI2V training, we set a joint-training paradigm with 3 sub-tasks including **first-frame-to-video**, **first&last-frames-to-video**, and **video-continuation**. We use `--i2v_ratio`, `--interp_ratio` and `--v2v_ratio` to control the probability of different sub-tasks during training.
+
+    ```bash
+    export OMP_NUM_THREADS=1
+    export MKL_NUM_THREADS=1
+
+    export WANDB_API_KEY=YOUR_WANDB_KEY
+
+    accelerate launch \
+        --num_machines 1 \
+        --num_processes 8 \
+        --machine_rank 0 \
+        --config_file config/accelerate_config.yaml \
+        train_ti2v.py \
+        --project_name AllegroTI2V_Finetune_88x720p \
+        --dit_config /huggingface/rhymes-ai/Allegro-TI2V/transformer/config.json \
+        --dit /huggingface/rhymes-ai/Allegro-TI2V/transformer/ \
+        --tokenizer /huggingface/rhymes-ai/Allegro-TI2V/tokenizer \
+        --text_encoder /huggingface/rhymes-ai/Allegro-TI2V/text_encoder \
+        --vae /huggingface/rhymes-ai/Allegro-TI2V/vae \
+        --vae_load_mode encoder_only \
+        --enable_ae_compile \
+        --dataset t2v \
+        --data_dir /data_root/ \
+        --meta_file data.parquet \
+        --sample_rate 2 \
+        --num_frames 88 \
+        --max_height 720 \
+        --max_width 1280 \
+        --hw_thr 1.0 \
+        --hw_aspect_thr 1.5 \
+        --dataloader_num_workers 10 \
+        --gradient_checkpointing \
+        --train_batch_size 1 \
+        --gradient_accumulation_steps 1 \
+        --max_train_steps 1000000 \
+        --learning_rate 1e-5 \
+        --lr_scheduler constant \
+        --lr_warmup_steps 0 \
+        --mixed_precision bf16 \
+        --report_to wandb \
+        --allow_tf32 \
+        --enable_stable_fp32 \
+        --model_max_length 512 \
+        --cfg 0.1 \
+        --checkpointing_steps 100 \
+        --seed 42 \
+        --i2v_ratio 0.5 \
+        --interp_ratio 0.4 \
+        --v2v_ratio 0.1 \
+        --default_text_ratio 0.5 \
+        --resume_from_checkpoint latest \
+        --output_dir ./output/AllegroTI2V_Finetune_88x720p
+    ```
+
+4. (Optional) To customize the model training arguments, you may create a `.json` file following [config.json](https://huggingface.co/rhymes-ai/Allegro-TI2V/blob/main/transformer/config.json). Feel free to use our training code to train a video diffusion model from scratch.
 
 ## Limitation
 - The model cannot render celebrities, legible text, specific locations, streets or buildings.

@@ -4,7 +4,9 @@ import math
 import os
 import shutil
 import torch
+from einops import rearrange
 import json
+
 
 from copy import deepcopy
 from pathlib import Path
@@ -15,23 +17,33 @@ from torch.utils.data import DataLoader
 import accelerate
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import DistributedType, ProjectConfiguration
+from accelerate.utils import DistributedType, ProjectConfiguration, set_seed
 
 import transformers
 from transformers import T5EncoderModel
 
 import diffusers
 from diffusers import DDPMScheduler
-from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
+from diffusers.utils import check_min_version, is_wandb_available
 
 from allegro.utils.utils import ctime
 from allegro.utils.adaptor import replace_with_fp32_forwards
 from allegro.utils.dataset_utils import Collate
+from allegro.utils.mask_utils import GaussianNoiseAdder
 from allegro.dataset import getdataset
 from allegro.models.vae.vae_allegro import AllegroAutoencoderKL3D
 from allegro.models.transformers.transformer_3d_allegro import AllegroTransformer3DModel
+from allegro.models.transformers.transformer_3d_allegro_ti2v import AllegroTransformerTI2V3DModel
+
+# from rsora.dataset import getdataset
+# from rsora.models import Diffusion_models, Diffusion_models_class
+# from rsora.models.rvae.autoencoder_kl_3d_cubefwd_wrapper import RVAEModelWrapper
+# from rsora.models.text_encoder import T5Wrapper
+# from rsora.models import ae_stride_config, ae_channel_config
+# from rsora.utils.utils import ctime
+# from rsora.utils.dataset_utils import Collate
 
 
 logger = get_logger(__name__)
@@ -42,6 +54,26 @@ class ProgressInfo:
         self.train_loss = train_loss
 
 def main(args):
+
+    def preprocess_x_for_ti2v(x):
+        x, mask = x[:, :3], x[:, 3:6]
+        masked_x = x * (mask < 0.5)
+        mask = mask[:, :1]
+        noise_adder = None
+        if args.add_noise_to_condition:
+            noise_adder = GaussianNoiseAdder(mean=-3.0, std=0.5, clear_ratio=0.05)
+        if noise_adder is not None:
+            masked_x = noise_adder(masked_x, mask)
+
+        x, masked_x = vae.encode(x).latent_dist.sample().mul_(vae.scale_factor), vae.encode(masked_x).latent_dist.sample().mul_(vae.scale_factor)
+        batch_size, channels, frame, height, width = mask.shape
+        mask = rearrange(mask, 'b c t h w -> (b c t) 1 h w')
+        mask = F.interpolate(mask, size=vae.latent_size, mode='bilinear')
+        mask = rearrange(mask, '(b c t) 1 h w -> b c t h w', t=frame, b=batch_size)
+        mask = mask.view(batch_size, vae.vae_scale_factor[0], latent_size_t, vae.latent_size[0], vae.latent_size[1]).contiguous()
+
+        return x, masked_x, mask
+    
     # ===== logger =≈====
     logging_dir = Path(args.output_dir, args.logging_dir)
     logging.basicConfig(
@@ -58,7 +90,7 @@ def main(args):
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
-        log_with=args.report_to,
+        # log_with=args.report_to,
         project_config=accelerator_project_config,
     )
 
@@ -74,6 +106,9 @@ def main(args):
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
 
+    if args.seed is not None:
+        set_seed(args.seed)
+
     if accelerator.is_main_process:
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
@@ -85,14 +120,11 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-
     if args.allow_tf32:
         torch.backends.cudnn.allow_tf32 = True
         torch.backends.cuda.matmul.allow_tf32 = True
 
     # ===== Load the Models =====
-    # create and freeze vae
-    # vae have better performance in float32
     vae = AllegroAutoencoderKL3D.from_pretrained(args.vae, torch_dtype=torch.float32, load_mode=args.vae_load_mode).to(accelerator.device)
     vae.eval()
     vae.requires_grad_(False)
@@ -102,6 +134,14 @@ def main(args):
     if args.vae_load_mode == "encoder_only":
         logger.info("VAE is loaded in encoder_only mode. It's normal that the decoder is not loaded.")
     args.vae_stride_t, args.vae_stride_h, args.vae_stride_w = vae.vae_scale_factor
+    vae.latent_size = (args.max_height // args.vae_stride_h, args.max_width // args.vae_stride_w)
+
+    if args.num_frames == 1:
+        latent_size_t = 1
+    elif args.num_frames % 2 == 1:
+        latent_size_t = (args.num_frames - 1) // args.vae_stride_t + 1
+    else:
+        latent_size_t = args.num_frames // args.vae_stride_t
 
     # create and freeze text encoder
     text_encoder = T5EncoderModel.from_pretrained(args.text_encoder, torch_dtype=weight_dtype, low_cpu_mem_usage=True).to(accelerator.device)
@@ -109,44 +149,81 @@ def main(args):
     text_encoder.requires_grad_(False)
     logger.info(f"Text encoder loaded from {args.text_encoder} successfully")
 
-    # create model
-    def initialize_model(dit_config, dit):
+    # Create model
+    def initialize_model(dit_config, dit, from_pretrained_t2v_model=None):
         model = None
-        if dit_config is not None:
-            with open(dit_config, 'r') as f:
-                config = json.load(f)
-            config = {k: v for k, v in config.items() if not k.startswith("_")}
-            model = AllegroTransformer3DModel(**config)
-        if dit is not None:
-            model = AllegroTransformer3DModel.from_pretrained(args.dit)
+
+        if from_pretrained_t2v_model:
+            if dit_config is not None:
+                with open(dit_config, 'r') as f:
+                    config = json.load(f)
+                config = {k: v for k, v in config.items() if not k.startswith("_")}
+                model = AllegroTransformer3DModel(**config)
+            if dit is not None:
+                model = AllegroTransformer3DModel.from_pretrained(args.dit)
+            model_state_dict = model.state_dict()
+            if 'safetensors' in from_pretrained_t2v_model:  # pixart series
+                from safetensors.torch import load_file as safe_load
+                pretrained_checkpoint = safe_load(from_pretrained_t2v_model, device="cpu")
+                pretrained_keys = set(list(pretrained_checkpoint.keys()))
+                model_keys = set(list(model_state_dict.keys()))
+                common_keys = list(pretrained_keys & model_keys)
+                checkpoint = {k: pretrained_checkpoint[k] for k in common_keys if model_state_dict[k].numel() == pretrained_checkpoint[k].numel()}
+            else:  # latest stage training weight
+                checkpoint = torch.load(from_pretrained_t2v_model, map_location='cpu')
+                if 'model' in checkpoint:
+                    checkpoint = checkpoint['model']
+
+            checkpoint['pos_embed_masked_video.0.proj.weight'] = checkpoint['pos_embed.proj.weight']
+            checkpoint['pos_embed_masked_video.0.proj.bias'] = checkpoint['pos_embed.proj.bias']
+
+            checkpoint['pos_embed_mask.0.proj.weight'] = checkpoint['pos_embed.proj.weight']
+            checkpoint['pos_embed_mask.0.proj.bias'] = checkpoint['pos_embed.proj.bias']
+            checkpoint['pos_embed_first_frame.0.proj.weight'] = checkpoint['pos_embed.proj.weight']
+            checkpoint['pos_embed_first_frame.0.proj.bias'] = checkpoint['pos_embed.proj.bias']
+
+
+            missing_keys, unexpected_keys = model.load_state_dict(checkpoint, strict=False)
+            logger.info(f'missing_keys {len(missing_keys)} {missing_keys}, unexpected_keys {len(unexpected_keys)}')
+            logger.info(f'Successfully load {len(model_state_dict) - len(missing_keys)}/{len(model_state_dict)} keys from {args.from_pretrained_t2v_model}!')
+
+        else:
+            if dit_config is not None:
+                with open(dit_config, 'r') as f:
+                    config = json.load(f)
+                config = {k: v for k, v in config.items() if not k.startswith("_")}
+                model = AllegroTransformerTI2V3DModel(**config)
+            if dit is not None:
+                model = AllegroTransformerTI2V3DModel.from_pretrained(args.dit)
+
+
         
         if model is None:
             raise ValueError("Model not initialized")
+    
+
         return model
     
-    model = initialize_model(args.dit_config, args.dit)
+    model = initialize_model(args.dit_config, args.dit, args.from_pretrained_t2v_model)
     model = model.to(accelerator.device, dtype=weight_dtype)
     model._set_gradient_checkpointing(value=args.gradient_checkpointing)
     model.train()
     logger.info(f"Model loaded from {args.dit} successfully")
 
-    # create EMA for the model.
+    # Create EMA for the model.
     if args.use_ema:
         ema_model = deepcopy(model)
         ema_model = EMAModel(
-            ema_model.parameters(),
-            decay=args.ema_decay,
+            ema_model.parameters(), 
+            decay=args.ema_decay, 
             update_after_step=args.ema_start_step,
-            model_cls=AllegroTransformer3DModel,
-            model_config=ema_model.config
-        )
-        ema_model.to(accelerator.device)
-        logger.info(f"EMA model created.")
-
+            model_cls=AllegroTransformerTI2V3DModel, 
+            model_config=ema_model.config)
+        
     # create scheduler
     noise_scheduler = DDPMScheduler()
-
-    # register hook from saving and loading
+    
+     # register hook from saving and loading
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
@@ -160,9 +237,10 @@ def main(args):
                         # make sure to pop weight so that corresponding model is not saved again
                         weights.pop()
 
+
         def load_model_hook(models, input_dir):
             if args.use_ema:
-                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "model_ema"), AllegroTransformer3DModel)
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "model_ema"), AllegroTransformerTI2V3DModel)
                 ema_model.load_state_dict(load_model.state_dict())
                 ema_model.to(accelerator.device)
                 del load_model
@@ -172,7 +250,7 @@ def main(args):
                 model = models.pop()
 
                 # load diffusers style into model
-                load_model = AllegroTransformer3DModel.from_pretrained(input_dir, subfolder="model")
+                load_model = AllegroTransformerTI2V3DModel.from_pretrained(input_dir, subfolder="model")
                 model.register_to_config(**load_model.config)
 
                 model.load_state_dict(load_model.state_dict())
@@ -180,6 +258,12 @@ def main(args):
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
+
+
+    if args.scale_lr:
+        args.learning_rate = (
+                args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+        )
 
     # create optimizer
     optimizer = torch.optim.AdamW(
@@ -198,7 +282,7 @@ def main(args):
         num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps,
         num_training_steps=args.max_train_steps * args.gradient_accumulation_steps,
     )
-    
+
     # ===== Data =====
     # prepare dataset and dataloader
     train_dataset = getdataset(args)
@@ -213,10 +297,12 @@ def main(args):
     logger.info(f'{len(train_dataset)} samples loaded from {args.meta_file} successfully')
 
     # ===== Prepare training =====
-    # prepare everything with our `accelerator`.
+    # Prepare everything with our `accelerator`.
     model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         model, optimizer, train_dataloader, lr_scheduler
     )
+    if args.use_ema:
+        ema_model.to(accelerator.device)
 
     # initialize tracker and store configuration
     accelerator.init_trackers(
@@ -269,7 +355,8 @@ def main(args):
             global_step = int(path.split("-")[1])
 
             first_epoch = global_step // num_update_steps_per_epoch
-   
+
+
     def sync_gradients_info():
         # Checks if the accelerator has performed an optimization step behind the scenes
         if args.use_ema:
@@ -307,25 +394,32 @@ def main(args):
                 logger.info(f"Saved state to {save_path}")
 
     def run(model_input, model_kwargs):
+        try:
+            in_channels = vae.latent_channels
+            model_input, masked_x, mask_cond = model_input[:, 0:in_channels], model_input[:, in_channels:2 * in_channels], model_input[:, 2 * in_channels:]
+        except:
+            raise ValueError("masked_x and video_mask is None!")
+
         noise = torch.randn_like(model_input)
         if args.noise_offset:
             # https://www.crosslabs.org//blog/diffusion-with-offset-noise
             noise += args.noise_offset * torch.randn((model_input.shape[0], model_input.shape[1], 1, 1, 1), device=model_input.device)
 
         bsz = model_input.shape[0]
-        # sample a random timestep for each image without bias.
+        # Sample a random timestep for each image without bias.
         timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device)
 
-        # add noise to the model input according to the noise magnitude at each timestep
+
+        # Add noise to the model input according to the noise magnitude at each timestep
         # (this is the forward diffusion process)
         noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
         model_pred = model(
-            noisy_model_input,
+            torch.cat([noisy_model_input, masked_x, mask_cond], dim=1),
             timesteps,
-            **model_kwargs
+            **model_kwargs,
         )[0]
-
+       
         # Get the target for loss depending on the prediction type
         if args.prediction_type is not None:
             # set prediction_type of scheduler if defined
@@ -397,7 +491,7 @@ def main(args):
     def train_one_step(step_, data_item_):
         x, attn_mask, input_ids, cond_mask = data_item_
         assert not torch.any(torch.isnan(x)), 'torch.any(torch.isnan(x))'
-        x = x.to(accelerator.device, dtype=vae.dtype)  # B C T H W, 16+4
+        x = x.to(accelerator.device, dtype=vae.dtype)  # B 3*C T H W, 16
 
         attn_mask = attn_mask.to(accelerator.device)  # B T H W
         input_ids = input_ids.to(accelerator.device)  # B 1 L
@@ -409,15 +503,11 @@ def main(args):
             input_ids_ = input_ids.reshape(-1, L)
             cond_mask_ = cond_mask.reshape(-1, L)
             cond = text_encoder(input_ids_, cond_mask_)['last_hidden_state'].detach()  # B 1 L D
-            cond = cond.reshape(B, N, L, -1)
-            # Map input images to latent space + normalize latents
+            cond = cond.reshape(B, N, L, -1)    # B 1 L D
 
-            x = torch.cat(
-                [
-                    vae.encode(x[i:i+1]).latent_dist.sample().mul_(vae.scale_factor)\
-                        for i in range(x.shape[0])
-                ]
-            ) # B C T H W
+            # Map input images to latent space + normalize latents
+            x, masked_x, mask = preprocess_x_for_ti2v(x) # B 3*C T H W -> (B C T H W) * 3 
+            x = torch.cat([x, masked_x, mask], dim=1) # (B C T H W) * 3 -> B 3*C T H W
 
         with accelerator.accumulate(model):
             assert not torch.any(torch.isnan(x)), 'after vae'
@@ -425,6 +515,7 @@ def main(args):
             model_kwargs = dict(encoder_hidden_states=cond, attention_mask=attn_mask,
                                 encoder_attention_mask=cond_mask)
             run(x, model_kwargs)
+
 
         if progress_info.global_step >= args.max_train_steps:
             return True
@@ -438,20 +529,20 @@ def main(args):
                 return True
 
             for step, data_item in enumerate(train_dataloader):
-                if train_one_step(step, data_item):
+                if train_one_step(step, data_item,):
                     break
 
     train_all_epoch(num_train_epochs)
-    
+
     accelerator.wait_for_everyone()
     accelerator.end_training()
 
 
-if __name__ == "__main__":
 
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    # dataset & dataloader
+     # dataset & dataloader
     parser.add_argument("--project_name", type=str, required=True)
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--data_dir", type=str, required=True)
@@ -472,11 +563,11 @@ if __name__ == "__main__":
     parser.add_argument("--dit_config", type=str, default=None)
     parser.add_argument("--vae", type=str, default=None, help="Path to the VAE model.")
     parser.add_argument("--vae_load_mode", type=str, default="encoder_only")
-    parser.add_argument("--enable_ae_compile", action="store_true")
+    parser.add_argument("--enable_ae_compile", action='store_true')
     parser.add_argument("--tokenizer", type=str, default=None, help="Path to the Tokenizer model.")
     parser.add_argument("--text_encoder", type=str, default=None, help="Path to the Text Encoder model.")
-    parser.add_argument("--cache_dir", type=str, default="./.cache")
-    parser.add_argument('--enable_stable_fp32', action="store_true")
+    parser.add_argument("--cache_dir", type=str, default='./cache_dir')
+    parser.add_argument('--enable_stable_fp32', action='store_true')
     parser.add_argument("--gradient_checkpointing", action="store_true", help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.")
 
     # diffusion setting
@@ -488,7 +579,8 @@ if __name__ == "__main__":
     parser.add_argument("--prediction_type", type=str, default=None, help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.")
 
     # validation & logs
-    parser.add_argument("--output_dir", type=str, default="./output", help="The output directory where the model predictions and checkpoints will be written.")
+    parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
+    parser.add_argument("--output_dir", type=str, default=None, help="The output directory where the model predictions and checkpoints will be written.")
     parser.add_argument("--checkpoints_total_limit", type=int, default=None, help=("Max number of checkpoints to store."))
     parser.add_argument("--checkpointing_steps", type=int, default=500,
                         help=(
@@ -516,12 +608,12 @@ if __name__ == "__main__":
                         ),
                         )
     # optimizer & scheduler
-    parser.add_argument("--max_train_steps", type=int, default=1000000, help="Total number of training steps to perform. ")
+    parser.add_argument("--max_train_steps", type=int, default=None, help="Total number of training steps to perform.  If provided, overrides num_train_epochs.")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.")
     parser.add_argument("--optimizer", type=str, default="adamW", help='The optimizer type to use. Choose between ["AdamW", "prodigy"]')
     parser.add_argument("--learning_rate", type=float, default=1e-4, help="Initial learning rate (after the potential warmup period) to use.")
     parser.add_argument("--scale_lr", action="store_true", default=False, help="Scale the learning rate by the number of GPUs, gradient accumulation steps, and batch size.")
-    parser.add_argument("--lr_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler.")
+    parser.add_argument("--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler.")
     parser.add_argument("--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes. Ignored if optimizer is not set to AdamW")
     parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam and Prodigy optimizers.")
@@ -543,9 +635,18 @@ if __name__ == "__main__":
                         ),
                         )
     parser.add_argument("--allow_tf32", action="store_true")
-    parser.add_argument("--mixed_precision", type=str, default="bf16", choices=["no", "fp16", "bf16"])
+    parser.add_argument("--mixed_precision", type=str, default=None, choices=["no", "fp16", "bf16"])
 
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+
+    # ti2v
+    parser.add_argument("--from_pretrained_t2v_model", type=str, default=None, help="Pretrained T2V model that TI2V starts from.")
+    parser.add_argument("--i2v_ratio", type=float, default=0.5) # for I2V
+    parser.add_argument("--interp_ratio", type=float, default=0.4) # for interpolation with first&last frames
+    parser.add_argument("--v2v_ratio", type=float, default=0.1) # for V2V
+    parser.add_argument("--clear_video_ratio", type=float, default=0.0)
+    parser.add_argument("--default_text_ratio", type=float, default=0.1)
+    parser.add_argument("--add_noise_to_condition", action='store_true', help="Whether to add gaussian noises to the input condition.")
 
     args = parser.parse_args()
     main(args)

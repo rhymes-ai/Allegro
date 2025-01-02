@@ -109,6 +109,7 @@ class AllegroTransformerTI2V3DModel(ModelMixin, ConfigMixin):
         downsampler: str = None, 
         use_rope: bool = True,
         model_max_length: int = 300,
+        **kwargs,
     ):
         super().__init__()
         self.use_linear_projection = use_linear_projection
@@ -225,7 +226,7 @@ class AllegroTransformerTI2V3DModel(ModelMixin, ConfigMixin):
         # init masked_video and mask conv_in
         self._init_patched_inputs_for_ti2v()
 
-    def _set_gradient_checkpointing(self, module, value=False):
+    def _set_gradient_checkpointing(self, value=False):
         self.gradient_checkpointing = value
 
 
