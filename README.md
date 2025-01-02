@@ -9,6 +9,7 @@
 [Allegro](huggingface.co/rhymes-ai/Allegro) is a powerful text-to-video model that generates high-quality videos up to 6 seconds at 15 FPS and 720p resolution from simple text input. [Allegro-TI2V](https://huggingface.co/rhymes-ai/Allegro-TI2V), a variant of [Allegro](https://huggingface.co/rhymes-ai/Allegro), extends this functionality by generating similar high-quality videos using text inputs along with first-frame and optionally last-frame image inputs.
 
 ## News 🔥
+ - [2025/01/02] 🚀 We release the training code for further training / fine-tuning on [Allegro-TI2V-88x720P](https://huggingface.co/rhymes-ai/Allegro-TI2V)! Happy New Year!
 
  - [2024/12/26] 🚀 We release the low-resolution (<a href="https://huggingface.co/rhymes-ai/Allegro-T2V-40x360P">40x360P</a>) and fewer-frame (<a href="https://huggingface.co/rhymes-ai/Allegro-T2V-40x720P">40x720P</a>) models of Allegro for research purpose!
   
