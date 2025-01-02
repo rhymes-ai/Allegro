@@ -325,7 +325,7 @@ For Allegro TI2V, currently we only support the video size on 88x720x1280.
 - [ ] Visual quality enhancement
 
 ## Support
-If you encounter any problems or have any suggestions, feel free to [open an issue](https://github.com/rhymes-ai/Allegro/issues/new) or send an email to huanyang@rhymes.ai. 
+If you encounter any problems or have any suggestions, feel free to [open an issue](https://github.com/rhymes-ai/Allegro/issues/new) or send an email to hyang@fastmail.com. 
 
 ## Citation
 Please consider citing our technical report if you find the code and pre-trained models useful for your project.
