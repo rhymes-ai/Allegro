@@ -231,6 +231,68 @@ For both Allegro & Allegro TI2V: We release multi-card inference code and PAB in
 
 4. (Optional) To customize the model training arguments, you may create a `.json` file following [config.json](https://huggingface.co/rhymes-ai/Allegro/blob/main/transformer/config.json). Feel free to use our training code to train a video diffusion model from scratch.
 
+## Acceleration with PeRFlow
+We also support acceleration with [PeRFlow](https://arxiv.org/abs/2405.07510), a state-of-the-art approach for rectified based diffusion models.
+
+Use the following scripts to train the PeRFlow:
+
+    ```bash
+    export OMP_NUM_THREADS=1
+    export MKL_NUM_THREADS=1
+
+    export WANDB_API_KEY=YOUR_WANDB_KEY
+
+    accelerate launch \
+        --num_machines 1 \
+        --num_processes 8 \
+        --machine_rank 0 \
+        --config_file config/accelerate_config.yaml \
+        train_perflow.py \
+        --project_name Allegro_PeRFlow_88x720p \
+        --dit_config /huggingface/rhymes-ai/Allegro/transformer/config.json \
+        --dit /huggingface/rhymes-ai/Allegro/transformer/ \
+        --tokenizer /huggingface/rhymes-ai/Allegro/tokenizer \
+        --text_encoder /huggingface/rhymes-ai/Allegro/text_encoder \
+        --vae /huggingface/rhymes-ai/Allegro/vae \
+        --vae_load_mode encoder_only \
+        --enable_ae_compile \
+        --dataset t2v \
+        --data_dir /data_root/ \
+        --meta_file data.parquet \
+        --enable_ae_compile \
+        --sample_rate 2 \
+        --num_frames 88 \
+        --max_height 720 \
+        --max_width 1280 \
+        --hw_thr 1.0 \
+        --hw_aspect_thr 1.5 \
+        --dataloader_num_workers 10 \
+        --gradient_checkpointing \
+        --train_batch_size 1 \
+        --gradient_accumulation_steps 1 \
+        --max_train_steps 1000000 \
+        --learning_rate 8e-5 \
+        --lr_scheduler constant \
+        --lr_warmup_steps 0 \
+        --mixed_precision bf16 \
+        --report_to wandb \
+        --allow_tf32 \
+        --enable_stable_fp32 \
+        --model_max_length 512 \
+        --snr_gamma 5.0 \
+        --use_ema \
+        --ema_start_step 0 \
+        --cfg 0.0 \
+        --noise_offset 0.02 \
+        --resume_from_checkpoint latest \
+        --ema_decay 0.999 \
+        --windows 4 \
+        --discrete_timesteps -1 \
+        --perflow_support_cfg \
+        --pred_type diff_eps \
+        --perflow_solving_steps 10 \
+        --output_dir ./output/Allegro_Finetune_88x720p
+    ```
 
 
 ## Limitation
