@@ -28,7 +28,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
 
-from allegro.utils.utils import ctime
+from allegro.utils.utils import ctime, parse_bool
 from allegro.utils.adaptor import replace_with_fp32_forwards
 from allegro.utils.dataset_utils import Collate
 from allegro.utils.mask_utils import GaussianNoiseAdder
@@ -621,9 +621,9 @@ if __name__ == "__main__":
     parser.add_argument("--adam_weight_decay", type=float, default=1e-02, help="Weight decay to use for unet params")
     parser.add_argument("--adam_weight_decay_text_encoder", type=float, default=None, help="Weight decay to use for text_encoder")
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer and Prodigy optimizers.")
-    parser.add_argument("--prodigy_decouple", type=bool, default=True, help="Use AdamW style decoupled weight decay")
-    parser.add_argument("--prodigy_use_bias_correction", type=bool, default=True, help="Turn on Adam's bias correction. True by default. Ignored if optimizer is adamW")
-    parser.add_argument("--prodigy_safeguard_warmup", type=bool, default=True, help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default. Ignored if optimizer is adamW")
+    parser.add_argument("--prodigy_decouple", type=parse_bool, default=True, help="Use AdamW style decoupled weight decay")
+    parser.add_argument("--prodigy_use_bias_correction", type=parse_bool, default=True, help="Turn on Adam's bias correction. True by default. Ignored if optimizer is adamW")
+    parser.add_argument("--prodigy_safeguard_warmup", type=parse_bool, default=True, help="Remove lr from the denominator of D estimate to avoid issues during warm-up stage. True by default. Ignored if optimizer is adamW")
     parser.add_argument("--prodigy_beta3", type=float, default=None,
                         help="coefficients for computing the Prodidy stepsize using running averages. If set to None, "
                              "uses the value of square root of beta2. Ignored if optimizer is adamW",
