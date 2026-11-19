@@ -1,3 +1,4 @@
+import argparse
 import os
 
 import torch
@@ -34,6 +35,15 @@ if is_ftfy_available():
     import ftfy
 
 _tensor_or_tensors = Union[torch.Tensor, Iterable[torch.Tensor]]
+
+def parse_bool(value: str) -> bool:
+    value = value.lower()
+    if value in {"true", "1", "yes"}:
+        return True
+    if value in {"false", "0", "no"}:
+        return False
+    raise argparse.ArgumentTypeError("expected true or false")
+
 
 def ctime():
     ctime = datetime.now(pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d %H:%M:%S')
